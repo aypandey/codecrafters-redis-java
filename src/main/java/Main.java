@@ -1,4 +1,6 @@
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -17,8 +19,21 @@ public class Main {
           // ensures that we don't run into 'Address already in use' errors
           serverSocket.setReuseAddress(true);
           // Wait for connection from client.
-          clientSocket = serverSocket.accept();
-          clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
+            while (true) {
+                clientSocket = serverSocket.accept();
+
+                // keep reading from THIS client until they disconnect
+                InputStream in = clientSocket.getInputStream();
+                OutputStream out = clientSocket.getOutputStream();
+
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {  // -1 means client disconnected
+                    out.write("+PONG\r\n".getBytes());          // respond to every message
+                }
+
+                clientSocket.close();  // client left, clean up
+            }
         } catch (IOException e) {
           System.out.println("IOException: " + e.getMessage());
         } finally {
