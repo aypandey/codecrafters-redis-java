@@ -1,49 +1,76 @@
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.Iterator;
+import java.util.Set;
 
 public class Main {
-  public static void main(String[] args){
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    System.out.println("Logs from your program will appear here!");
+    public static void main(String[] args) throws IOException {
 
-    //  Uncomment the code below to pass the first stage
-        ServerSocket serverSocket = null;
-        Socket clientSocket = null;
-        int port = 6379;
-        try {
-          serverSocket = new ServerSocket(port);
-          // Since the tester restarts your program quite often, setting SO_REUSEADDR
-          // ensures that we don't run into 'Address already in use' errors
-          serverSocket.setReuseAddress(true);
-          // Wait for connection from client.
-            while (true) {
-                clientSocket = serverSocket.accept();
+        // 1. Setup - non-blocking server channel
+        ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        serverChannel.bind(new InetSocketAddress(6379));
+        serverChannel.configureBlocking(false);  // KEY: don't block on accept()
 
-                // keep reading from THIS client until they disconnect
-                InputStream in = clientSocket.getInputStream();
-                OutputStream out = clientSocket.getOutputStream();
+        // 2. Create the selector - this IS the event loop
+        Selector selector = Selector.open();
 
-                byte[] buffer = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {  // -1 means client disconnected
-                    out.write("+PONG\r\n".getBytes());          // respond to every message
+        // 3. Register server channel for ACCEPT events
+        serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+        System.out.println("Server started on port 6379");
+
+        // 4. THE EVENT LOOP
+        while (true) {
+            selector.select();  // blocks until at least one event is ready
+
+            Set<SelectionKey> readyKeys = selector.selectedKeys();
+            Iterator<SelectionKey> iterator = readyKeys.iterator();
+
+            while (iterator.hasNext()) {
+                SelectionKey key = iterator.next();
+                iterator.remove();  // IMPORTANT: manually remove processed key
+
+                if (key.isAcceptable()) {
+                    handleAccept(serverChannel, selector);
+                } else if (key.isReadable()) {
+                    handleRead(key);
                 }
-
-                clientSocket.close();  // client left, clean up
             }
-        } catch (IOException e) {
-          System.out.println("IOException: " + e.getMessage());
-        } finally {
-          try {
-            if (clientSocket != null) {
-              clientSocket.close();
-            }
-          } catch (IOException e) {
-            System.out.println("IOException: " + e.getMessage());
-          }
         }
-  }
+    }
+
+    // Called when a new client wants to connect
+    private static void handleAccept(ServerSocketChannel serverChannel, Selector selector)
+            throws IOException {
+
+        SocketChannel clientChannel = serverChannel.accept(); // won't block - we know it's ready
+        clientChannel.configureBlocking(false);               // client also non-blocking
+
+        // Register this client for READ events
+        clientChannel.register(selector, SelectionKey.OP_READ);
+
+        System.out.println("New client connected: " + clientChannel.getRemoteAddress());
+    }
+
+    // Called when a client has sent data
+    private static void handleRead(SelectionKey key) throws IOException {
+        SocketChannel clientChannel = (SocketChannel) key.channel();
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+        int bytesRead = clientChannel.read(buffer);
+
+        if (bytesRead == -1) {
+            // Client disconnected
+            System.out.println("Client disconnected");
+            clientChannel.close();
+            key.cancel();
+            return;
+        }
+
+        // For now, respond PONG to everything
+        // Later you'll parse the buffer to read actual commands
+        clientChannel.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
+    }
 }
