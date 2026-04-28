@@ -6,6 +6,8 @@ import java.util.Iterator;
 import java.util.Set;
 
 public class Main {
+    private static final CommandRouter router = new CommandRouter();
+
     public static void main(String[] args) throws IOException {
 
         // 1. Setup - non-blocking server channel
@@ -69,8 +71,9 @@ public class Main {
             return;
         }
 
-        // For now, respond PONG to everything
-        // Later you'll parse the buffer to read actual commands
-        clientChannel.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
+        String raw = new String(buffer.array(), 0, bytesRead);  // bytes → String
+        String[] args = RespParser.parse(raw);                   // parse RESP
+        String response = router.route(args);                    // route to handler
+        clientChannel.write(ByteBuffer.wrap(response.getBytes()));
     }
 }
