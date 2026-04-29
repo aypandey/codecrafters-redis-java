@@ -8,6 +8,8 @@ public class CommandRouter {
         // Register all handlers here — adding new commands is just one line
         handlers.put("PING", new PingHandler());
         handlers.put("ECHO", new EchoHandler());
+        handlers.put("SET",  new SetHandler());   // ← add
+        handlers.put("GET",  new GetHandler());
     }
 
     public String route(String[] args) {

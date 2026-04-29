@@ -19,4 +19,8 @@ public class RespEncoder {
     public static String integer(int value) {
         return ":" + value + "\r\n";
     }
+
+    public static String nullBulkString() {
+        return "$-1\r\n";   // Redis nil response
+    }
 }
